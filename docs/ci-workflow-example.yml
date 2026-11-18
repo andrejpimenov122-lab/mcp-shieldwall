@@ -1,0 +1,25 @@
+# Example GitHub Actions workflow for MCP Shieldwall CI integration.
+# Copy this file to .github/workflows/ci.yml when enabling CI in your repository.
+
+name: CI
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test-and-shieldwall:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m unittest discover -s tests -v
+      # Optional: enforce MCP tool lockfile & SARIF scanning in CI:
+      # - run: pip install -e .
+      # - run: mcp-shieldwall verify-lock tools.json --lock .mcp-lock.json
+      # - run: mcp-shieldwall scan tools.json --format sarif > shieldwall.sarif
