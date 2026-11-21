@@ -41,32 +41,42 @@ def compute_schema_pin(tools: list[dict[str, Any]]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def load_tools_manifest(path: Path) -> list[dict[str, Any]]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+def parse_tools_manifest_data(data: Any, source: str = "<input>") -> list[dict[str, Any]]:
+    """Extract tool definitions from a parsed MCP tools manifest payload."""
     if isinstance(data, list):
         return [t for t in data if isinstance(t, dict)]
     if isinstance(data, dict):
         if ("mcpServers" in data or "servers" in data) and "tools" not in data:
             raise ValueError(
-                f"{path} is an MCP client config (mcpServers/servers), not a tools/list manifest. "
-                f"Run `mcp-shieldwall audit-config {path}` instead (refusing false-clean pass)."
+                f"{source} is an MCP client config (mcpServers/servers), not a tools/list manifest. "
+                f"Run `mcp-shieldwall audit-config {source}` instead (refusing false-clean pass)."
             )
         if "tools" in data and isinstance(data["tools"], list):
             return [t for t in data["tools"] if isinstance(t, dict)]
-    raise ValueError(f"Unsupported MCP tools manifest structure in {path}")
+    raise ValueError(f"Unsupported MCP tools manifest structure in {source}")
 
 
-def audit_manifest_file(path: Path) -> tuple[int, dict[str, Any]]:
-    tools = load_tools_manifest(path)
+def load_tools_manifest(path: Path) -> list[dict[str, Any]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return parse_tools_manifest_data(data, str(path))
+
+
+def build_manifest_report(tools: list[dict[str, Any]], source: str) -> dict[str, Any]:
+    """Scan tool definitions and build a structured manifest audit report."""
     findings = scan_tool_definitions(tools)
-    report = {
-        "file": str(path),
+    return {
+        "file": source,
         "tools_scanned": len(tools),
         "schema_sha256": compute_schema_pin(tools),
         "findings": [f.__dict__ for f in findings],
         "passed": len(findings) == 0,
     }
-    return (0 if not findings else 2), report
+
+
+def audit_manifest_file(path: Path) -> tuple[int, dict[str, Any]]:
+    tools = load_tools_manifest(path)
+    report = build_manifest_report(tools, str(path))
+    return (0 if report["passed"] else 2), report
 
 
 def format_sarif_report(report: dict[str, Any]) -> dict[str, Any]:
@@ -288,12 +298,8 @@ def verify_lockfile(manifest_path: Path, lock_path: Path) -> tuple[int, dict[str
     return (0 if passed else 2), report
 
 
-def audit_config_file(path: Path) -> tuple[int, dict[str, Any]]:
-    """Audit a Claude Desktop / Cursor / VS Code MCP client config file."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected JSON object in MCP config {path}")
-
+def build_config_report(data: dict[str, Any], source: str) -> dict[str, Any]:
+    """Audit a parsed MCP client config dict and build a structured report."""
     server_count = 0
     for key in ("mcpServers", "servers"):
         section = data.get(key)
@@ -301,13 +307,22 @@ def audit_config_file(path: Path) -> tuple[int, dict[str, Any]]:
             server_count += len(section)
 
     findings = audit_mcp_config(data)
-    report = {
-        "file": str(path),
+    return {
+        "file": source,
         "servers_audited": server_count,
         "findings": [f.__dict__ for f in findings],
         "passed": len(findings) == 0,
     }
-    return (0 if not findings else 2), report
+
+
+def audit_config_file(path: Path) -> tuple[int, dict[str, Any]]:
+    """Audit a Claude Desktop / Cursor / VS Code MCP client config file."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected JSON object in MCP config {path}")
+
+    report = build_config_report(data, str(path))
+    return (0 if report["passed"] else 2), report
 
 
 def inspect_rpc_message(raw_line: str) -> tuple[bool, str, list[dict[str, Any]]]:
@@ -482,6 +497,8 @@ def main(argv: list[str] | None = None) -> int:
     redact_p = sub.add_parser("redact", help="Redact leaked secrets from stdin or a text file")
     redact_p.add_argument("file", nargs="?", type=Path, help="Optional file path (defaults to stdin)")
 
+    sub.add_parser("serve-mcp", help="Run MCP Shieldwall as a native stdio MCP JSON-RPC 2.0 server")
+
     effective_argv = sys.argv[1:] if argv is None else argv
     if len(effective_argv) == 0:
         return _run_quickcheck("text")
@@ -565,6 +582,11 @@ def main(argv: list[str] | None = None) -> int:
             print(cleaned)
             sys.stderr.write(f"[mcp-shieldwall] Redacted {count} secret(s).\n")
             return 0
+
+        if cmd == "serve-mcp":
+            from .mcp_server import serve_stdio
+
+            return serve_stdio()
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         sys.stderr.write(f"[mcp-shieldwall] Error: {exc}\n")
         return 1

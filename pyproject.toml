@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-shieldwall"
-version = "0.2.3"
+version = "0.3.0"
 description = "Zero-dependency security firewall, tool-poisoning scanner & secret redactor for MCP (Model Context Protocol) servers."
 readme = "README.md"
 license = {text = "MIT"}
@@ -25,3 +25,4 @@ Repository = "https://github.com/andrejpimenov122-lab/mcp-shieldwall"
 
 [project.scripts]
 mcp-shieldwall = "mcp_shieldwall.cli:main"
+mcp-shieldwall-server = "mcp_shieldwall.mcp_server:main"

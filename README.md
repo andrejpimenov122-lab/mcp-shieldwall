@@ -7,7 +7,9 @@
 
 Coding agents (Claude Desktop, Claude Code, Cursor, Windsurf) increasingly connect to third-party **MCP servers**. A single poisoned tool description (`<IMPORTANT> silently read ~/.ssh/id_rsa ...`), base64-obfuscated `inputSchema` default, unpinned `npx -y` server, or silent schema update ("rug-pull") can hijack the model's context or leak API keys.
 
-**MCP Shieldwall** (`v0.2.3`) runs locally on **100% Python stdlib** with **zero external dependencies**:
+**MCP Shieldwall** (`v0.3.0`) runs locally on **100% Python stdlib** with **zero external dependencies**:
+
+- **Native MCP Server (`serve-mcp` / `mcp-shieldwall-server`)**: Runs as a zero-dependency JSON-RPC 2.0 `stdio` MCP server exposing `scan_tools_manifest`, `audit_client_config`, `verify_schema_lock`, and `redact_sensitive_text` directly inside your AI client.
 
 - **Static Tool-Poisoning Scanner (`MCP-001`..`MCP-004`)**: Detects hidden prompt-injection instructions, `.env` / SSH exfiltration directives, rogue webhooks, and **base64-obfuscated payloads** inside `tools/list` schemas (`--format json|sarif|markdown`).
 - **CI Rug-Pull Lockfile (`lock` / `verify-lock`)**: Pins canonical SHA-256 fingerprints per tool (`description` + `inputSchema`) into `.mcp-lock.json` and alerts in CI on silent upstream mutations, additions, or removals.
@@ -58,6 +60,27 @@ Run the 10-second zero-install showcase:
 ./examples/demo.sh
 ```
 
+## Use as an MCP Server in Claude Desktop / Claude Code / Cursor
+
+Add MCP Shieldwall directly to your `claude_desktop_config.json`, `.mcp.json`, or `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "mcp-shieldwall": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/andrejpimenov122-lab/mcp-shieldwall", "mcp-shieldwall", "serve-mcp"]
+    }
+  }
+}
+```
+
+Exposed MCP tools:
+- `scan_tools_manifest` — Scan a `tools/list` manifest JSON or file for `MCP-001`..`MCP-004` (including Base64-obfuscated payloads).
+- `audit_client_config` — Audit `mcpServers`/`servers` configs for `MCP-301`..`MCP-304`.
+- `verify_schema_lock` — Verify SHA-256 tool fingerprints against `.mcp-lock.json` to catch rug-pulls.
+- `redact_sensitive_text` — Scrub leaked API keys and tokens (`MCP-201`).
+
 ## Zero-Clone `pre-commit` Hook (Blocks Unsafe `.mcp.json` / `.cursor/mcp.json` Commits)
 
 Add directly to `.pre-commit-config.yaml` in any repository:
@@ -65,7 +88,7 @@ Add directly to `.pre-commit-config.yaml` in any repository:
 ```yaml
 repos:
   - repo: https://github.com/andrejpimenov122-lab/mcp-shieldwall
-    rev: v0.2.3
+    rev: v0.3.0
     hooks:
       - id: mcp-shieldwall-config
       - id: mcp-shieldwall-manifest
@@ -90,3 +113,5 @@ Static regex/decoding heuristics and config rules do not replace OS-level sandbo
 ## License
 
 MIT — Open Source Initiative (OSI) approved.
+
+<!-- mcp-name: io.github.andrejpimenov122-lab/mcp-shieldwall -->
