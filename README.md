@@ -7,29 +7,46 @@
 
 Coding agents (Claude Desktop, Claude Code, Cursor, Windsurf) increasingly connect to third-party **MCP servers**. A single poisoned tool description (`<IMPORTANT> silently read ~/.ssh/id_rsa ...`), base64-obfuscated `inputSchema` default, unpinned `npx -y` server, or silent schema update ("rug-pull") can hijack the model's context or leak API keys.
 
-**MCP Shieldwall** (`v0.2.0`) runs locally on **100% Python stdlib** with **zero external dependencies**:
+**MCP Shieldwall** (`v0.2.3`) runs locally on **100% Python stdlib** with **zero external dependencies**:
 
-- **Static Tool-Poisoning Scanner (`MCP-001`..`MCP-004`)**: Detects hidden prompt-injection instructions, `.env` / SSH exfiltration directives, rogue webhooks, and **base64-obfuscated payloads** inside `tools/list` schemas (`--format json|sarif`).
+- **Static Tool-Poisoning Scanner (`MCP-001`..`MCP-004`)**: Detects hidden prompt-injection instructions, `.env` / SSH exfiltration directives, rogue webhooks, and **base64-obfuscated payloads** inside `tools/list` schemas (`--format json|sarif|markdown`).
 - **CI Rug-Pull Lockfile (`lock` / `verify-lock`)**: Pins canonical SHA-256 fingerprints per tool (`description` + `inputSchema`) into `.mcp-lock.json` and alerts in CI on silent upstream mutations, additions, or removals.
-- **Client Config Auditor (`audit-config`, `MCP-301`..`MCP-304`)**: Checks `claude_desktop_config.json` / Cursor `mcp.json` / VS Code `mcp.json` for unsafe flags (`--allow-all`, `--no-sandbox`), hardcoded API tokens, unpinned `npx -y` packages without explicit versions, and insecure `http://` endpoints.
+- **Client Config Auditor (`audit-config`, `MCP-301`..`MCP-304`)**: Checks `claude_desktop_config.json` / Claude Code `.mcp.json` / Cursor `mcp.json` / VS Code `mcp.json` for unsafe flags (`--allow-all`, `--no-sandbox`), hardcoded API tokens, unpinned `npx -y` packages without explicit versions, and insecure `http://` endpoints (`--format json|markdown`).
 - **Runtime Call Guard (`MCP-101`..`MCP-103`)**: Blocks destructive shell commands (`rm -rf /`, `curl ... | bash`) and base64-obfuscated payloads in `tools/call` arguments.
 - **Live Secret Redaction (`MCP-201`)**: Scrubs Anthropic, OpenAI, GitHub, AWS, Slack, Google, and Stripe credentials from MCP responses before they enter model context.
 
 ## Quick Start
 
+### Run Instantly (Zero Clone / Zero Dependencies)
+
+```bash
+# Instant local MCP config security check via uvx (zero install):
+uvx --from git+https://github.com/andrejpimenov122-lab/mcp-shieldwall mcp-shieldwall
+
+# Run interactive attack & config audit showcase:
+uvx --from git+https://github.com/andrejpimenov122-lab/mcp-shieldwall mcp-shieldwall demo
+
+# Or install globally / in venv directly from GitHub:
+pip install git+https://github.com/andrejpimenov122-lab/mcp-shieldwall.git
+```
+
+### Local CLI Workflows
+
 ```bash
 pip install -e .
 
-# 1. Scan an MCP tools manifest (JSON or SARIF v2.1.0)
+# 1. Scan an MCP tools manifest (JSON, SARIF v2.1.0, or GitHub Markdown)
 mcp-shieldwall scan examples/sample_tools.json
 mcp-shieldwall scan examples/sample_tools.json --format sarif
+mcp-shieldwall scan examples/sample_tools.json --format markdown
 
 # 2. Pin tool schemas to a lockfile and verify in CI against rug-pulls
 mcp-shieldwall lock tools.json --out .mcp-lock.json
 mcp-shieldwall verify-lock tools.json --lock .mcp-lock.json
 
-# 3. Audit Claude Desktop or Cursor MCP configuration
+# 3. Audit Claude Desktop, Claude Code, Cursor, or VS Code MCP configuration
 mcp-shieldwall audit-config ~/.cursor/mcp.json
+mcp-shieldwall audit-config ~/.cursor/mcp.json --format markdown
 
 # 4. Redact leaked keys from tool logs or outputs
 mcp-shieldwall redact server_output.log
@@ -48,7 +65,7 @@ Add directly to `.pre-commit-config.yaml` in any repository:
 ```yaml
 repos:
   - repo: https://github.com/andrejpimenov122-lab/mcp-shieldwall
-    rev: v0.2.2
+    rev: v0.2.3
     hooks:
       - id: mcp-shieldwall-config
       - id: mcp-shieldwall-manifest
