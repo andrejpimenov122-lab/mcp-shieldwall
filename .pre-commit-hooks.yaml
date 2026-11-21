@@ -1,0 +1,13 @@
+- id: mcp-shieldwall-config
+  name: MCP Shieldwall — Audit MCP Client Configs (.mcp.json / mcp.json)
+  description: Blocks hardcoded API tokens, unpinned npx -y servers, and unsafe flags in MCP configs before commit.
+  entry: python3 -m mcp_shieldwall.cli audit-config
+  language: system
+  files: (^|/)(claude_desktop_config|\.mcp|mcp)\.json$
+
+- id: mcp-shieldwall-manifest
+  name: MCP Shieldwall — Scan MCP Tools Manifest for Prompt Injection
+  description: Scans MCP tools/list JSON schemas for hidden prompt-injection directives and rogue webhooks.
+  entry: python3 -m mcp_shieldwall.cli scan
+  language: system
+  files: tools.*\.json$

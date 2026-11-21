@@ -41,6 +41,21 @@ Run the 10-second zero-install showcase:
 ./examples/demo.sh
 ```
 
+## Zero-Clone `pre-commit` Hook (Blocks Unsafe `.mcp.json` / `.cursor/mcp.json` Commits)
+
+Add directly to `.pre-commit-config.yaml` in any repository:
+
+```yaml
+repos:
+  - repo: https://github.com/andrejpimenov122-lab/mcp-shieldwall
+    rev: v0.2.2
+    hooks:
+      - id: mcp-shieldwall-config
+      - id: mcp-shieldwall-manifest
+```
+
+Live browser playground (zero install): https://huggingface.co/spaces/snsnshnwh/mcp-shieldwall
+
 ## CI Integration
 
 An example GitHub Actions workflow is provided at [`docs/ci-workflow-example.yml`](docs/ci-workflow-example.yml).
