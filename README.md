@@ -108,6 +108,11 @@ Live browser playground (zero install): https://huggingface.co/spaces/snsnshnwh/
 
 An example GitHub Actions workflow is provided at [`docs/ci-workflow-example.yml`](docs/ci-workflow-example.yml).
 
+## Documentation & Benchmarks
+
+- **9-Client IDE & CLI Integration Guide**: [`docs/IDE_INTEGRATIONS.md`](docs/IDE_INTEGRATIONS.md) — Setup snippets for Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, Cline, Roo Code, Zed, and Continue.dev.
+- **12-Vector Security Benchmark**: [`docs/SECURITY_BENCHMARK.md`](docs/SECURITY_BENCHMARK.md) — Empirical recall, false-positive analysis, latency, and schema rug-pull verification across 12 attack vectors and 12 benign configs/tools.
+
 ## Running Tests
 
 ```bash

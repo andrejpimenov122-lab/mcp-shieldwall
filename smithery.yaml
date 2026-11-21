@@ -1,0 +1,16 @@
+# Smithery MCP server configuration
+# Docs: https://smithery.ai/docs/config#smitheryyaml
+startCommand:
+  type: stdio
+  configSchema:
+    # MCP Shieldwall runs 100% locally on Python 3.9+ stdlib with zero external API keys required.
+    type: object
+    properties: {}
+    additionalProperties: false
+  commandFunction: |-
+    (config) => ({
+      command: 'mcp-shieldwall',
+      args: ['serve-mcp'],
+      env: {}
+    })
+  exampleConfig: {}

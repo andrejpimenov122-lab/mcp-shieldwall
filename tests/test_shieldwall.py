@@ -856,6 +856,13 @@ class TestMcpStdioServer(unittest.TestCase):
                     result = scan({"manifest_path": str(path)})
                     self.assertTrue(result["isError"])
                     self.assertIn(message, result["content"][0]["text"])
+            non_json = Path(inside) / "non_json.json"
+            secret_marker = "RAW_ARBITRARY_SECRET_PAYLOAD_12345"
+            non_json.write_text(secret_marker, encoding="utf-8")
+            bad_json_result = scan({"manifest_path": str(non_json)})
+            self.assertTrue(bad_json_result["isError"])
+            self.assertIn("Invalid UTF-8 or JSON input", bad_json_result["content"][0]["text"])
+            self.assertNotIn(secret_marker, bad_json_result["content"][0]["text"])
         self.assertTrue(scan({"manifest_json": [], "unexpected": True})["isError"])
 
     def test_cli_serve_mcp_and_server_entrypoint_and_registry_manifest(self) -> None:
