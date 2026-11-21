@@ -2,6 +2,8 @@
 
 **Zero-dependency security firewall, tool-poisoning scanner, lockfile verifier & config auditor for Model Context Protocol (MCP) servers.**
 
+[![PyPI version](https://img.shields.io/pypi/v/mcp-shieldwall.svg)](https://pypi.org/project/mcp-shieldwall/)
+[![Downloads](https://static.pepy.tech/badge/mcp-shieldwall)](https://pepy.tech/projects/mcp-shieldwall)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-3776AB.svg)](pyproject.toml)
 
@@ -22,14 +24,9 @@ Coding agents (Claude Desktop, Claude Code, Cursor, Windsurf) increasingly conne
 ### Run Instantly (Zero Clone / Zero Dependencies)
 
 ```bash
-# Instant local MCP config security check via uvx (zero install):
-uvx --from git+https://github.com/andrejpimenov122-lab/mcp-shieldwall mcp-shieldwall
-
-# Run interactive attack & config audit showcase:
-uvx --from git+https://github.com/andrejpimenov122-lab/mcp-shieldwall mcp-shieldwall demo
-
-# Or install globally / in venv directly from GitHub:
-pip install git+https://github.com/andrejpimenov122-lab/mcp-shieldwall.git
+uvx mcp-shieldwall
+uvx mcp-shieldwall demo
+pip install mcp-shieldwall
 ```
 
 ### Local CLI Workflows
@@ -69,7 +66,7 @@ Add MCP Shieldwall directly to your `claude_desktop_config.json`, `.mcp.json`, o
   "mcpServers": {
     "mcp-shieldwall": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/andrejpimenov122-lab/mcp-shieldwall@v0.3.1", "mcp-shieldwall", "serve-mcp"]
+      "args": ["mcp-shieldwall", "serve-mcp"]
     }
   }
 }

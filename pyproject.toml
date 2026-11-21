@@ -19,6 +19,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/andrejpimenov122-lab/mcp-shieldwall"
+Website = "https://mcpshieldwall.dpdns.org"
 Repository = "https://github.com/andrejpimenov122-lab/mcp-shieldwall"
 "Live Playground" = "https://huggingface.co/spaces/snsnshnwh/mcp-shieldwall"
 "Bug Tracker" = "https://github.com/andrejpimenov122-lab/mcp-shieldwall/issues"
