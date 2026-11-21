@@ -252,6 +252,15 @@ def verify_lockfile(manifest_path: Path, lock_path: Path) -> tuple[int, dict[str
     """Verify an MCP tools manifest against a committed lockfile to catch rug-pull changes."""
     tools = load_tools_manifest(manifest_path)
     lock_data = json.loads(lock_path.read_text(encoding="utf-8"))
+    return verify_schema_lock(tools, lock_data, str(manifest_path), str(lock_path))
+
+
+def verify_schema_lock(
+    tools: list[dict[str, Any]], lock_data: dict[str, Any], manifest_path: str, lock_path: str
+) -> tuple[int, dict[str, Any]]:
+    """Compare parsed tools and a parsed lockfile using the CLI report format."""
+    if not isinstance(lock_data, dict):
+        raise ValueError("Expected a JSON object in the lockfile.")
 
     expected_sha = str(lock_data.get("manifest_sha256", ""))
     actual_sha = compute_schema_pin(tools)
@@ -286,8 +295,8 @@ def verify_lockfile(manifest_path: Path, lock_path: Path) -> tuple[int, dict[str
 
     passed = (actual_sha == expected_sha) and not added and not removed and not modified
     report = {
-        "manifest": str(manifest_path),
-        "lockfile": str(lock_path),
+        "manifest": manifest_path,
+        "lockfile": lock_path,
         "passed": passed,
         "expected_sha256": expected_sha,
         "actual_sha256": actual_sha,

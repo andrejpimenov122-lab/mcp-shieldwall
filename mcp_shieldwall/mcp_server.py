@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
+import re
+import stat
 import sys
 from pathlib import Path
 from typing import Any, BinaryIO, TextIO
@@ -14,14 +17,21 @@ from .cli import (
     build_config_report,
     build_manifest_report,
     format_markdown_report,
-    load_tools_manifest,
     parse_tools_manifest_data,
-    verify_lockfile,
+    verify_schema_lock,
 )
 from .rules import redact_secrets
 
-DEFAULT_PROTOCOL_VERSION = "2024-11-05"
-SUPPORTED_PROTOCOL_VERSIONS = ("2025-03-26", "2024-11-05")
+SUPPORTED_PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
+DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
+STRUCTURED_PROTOCOL_VERSIONS = SUPPORTED_PROTOCOL_VERSIONS[:2]
+MAX_JSON_BYTES = 2 * 1024 * 1024
+READ_ONLY_ANNOTATIONS = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
 
 MCP_TOOLS: list[dict[str, Any]] = [
     {
@@ -242,12 +252,37 @@ def _tool_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
     }
 
 
-def _render_report(report: dict[str, Any], fmt: str) -> str:
+def _render_report(report: dict[str, Any], fmt: str) -> dict[str, Any]:
     if fmt == "markdown":
-        return format_markdown_report(report)
-    if fmt == "json":
-        return json.dumps(report, indent=2, ensure_ascii=False)
-    raise ValueError(f"Unsupported format {fmt!r}; expected 'json' or 'markdown'.")
+        text = format_markdown_report(report)
+    elif fmt == "json":
+        text = json.dumps(report, indent=2, ensure_ascii=False)
+    else:
+        raise ValueError("Expected 'json' or 'markdown' output format.")
+    return {**_tool_result(text), "structuredContent": report}
+
+
+def _read_sandboxed_json(value: Any) -> tuple[Any, str]:
+    """Load a bounded JSON regular file below the home or working directory."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Expected a non-empty local JSON path.")
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", value) and not Path(value).drive:
+        raise ValueError("File sandbox rejects URL schemes.")
+    path = Path(value).expanduser().resolve(strict=True)
+    if not any(path.is_relative_to(root.resolve()) for root in (Path.home(), Path.cwd())):
+        raise ValueError("File sandbox rejects paths outside the allowed roots (home and working directory).")
+    if path.suffix.lower() != ".json":
+        raise ValueError("File sandbox requires a .json file.")
+    if not path.is_file():
+        raise ValueError("File sandbox requires a regular file.")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    with os.fdopen(os.open(path, flags), "rb") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise ValueError("File sandbox requires a regular file.")
+        raw = handle.read(MAX_JSON_BYTES + 1)
+    if len(raw) > MAX_JSON_BYTES:
+        raise ValueError("File sandbox rejects files larger than 2 MiB.")
+    return json.loads(raw), str(path)
 
 
 def _parse_inline_or_file(
@@ -257,14 +292,12 @@ def _parse_inline_or_file(
     path_key: str,
     default_label: str,
 ) -> tuple[Any, str]:
+    if (inline_value is None) == (file_path is None):
+        raise ValueError(f"Provide exactly one of '{inline_key}' or '{path_key}'.")
     if inline_value is not None:
         data = json.loads(inline_value) if isinstance(inline_value, str) else inline_value
-        source_label = str(file_path) if isinstance(file_path, str) and file_path else default_label
-        return data, source_label
-    if isinstance(file_path, str) and file_path.strip():
-        path = Path(file_path)
-        return json.loads(path.read_text(encoding="utf-8")), str(path)
-    raise ValueError(f"Provide either '{inline_key}' or '{path_key}'.")
+        return data, default_label
+    return _read_sandboxed_json(file_path)
 
 
 def _tool_scan_tools_manifest(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -272,22 +305,13 @@ def _tool_scan_tools_manifest(arguments: dict[str, Any]) -> dict[str, Any]:
     if fmt not in ("json", "markdown"):
         raise ValueError(f"Unsupported format {fmt!r}; expected 'json' or 'markdown'.")
 
-    manifest_json = arguments.get("manifest_json")
-    manifest_path = arguments.get("manifest_path")
-    if manifest_json is not None:
-        data, source_label = _parse_inline_or_file(
-            manifest_json, manifest_path, "manifest_json", "manifest_path", "<inline-manifest>"
-        )
-        tools = parse_tools_manifest_data(data, source_label)
-    elif isinstance(manifest_path, str) and manifest_path.strip():
-        path = Path(manifest_path)
-        tools = load_tools_manifest(path)
-        source_label = str(path)
-    else:
-        raise ValueError("Provide either 'manifest_json' or 'manifest_path'.")
-
+    data, source_label = _parse_inline_or_file(
+        arguments.get("manifest_json"), arguments.get("manifest_path"),
+        "manifest_json", "manifest_path", "<inline-manifest>",
+    )
+    tools = parse_tools_manifest_data(data, source_label)
     report = build_manifest_report(tools, source_label)
-    return _tool_result(_render_report(report, fmt), is_error=False)
+    return _render_report(report, fmt)
 
 
 def _tool_audit_client_config(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -306,19 +330,15 @@ def _tool_audit_client_config(arguments: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Expected JSON object in MCP config {source_label}")
 
     report = build_config_report(data, source_label)
-    return _tool_result(_render_report(report, fmt), is_error=False)
+    return _render_report(report, fmt)
 
 
 def _tool_verify_schema_lock(arguments: dict[str, Any]) -> dict[str, Any]:
-    manifest_path = arguments.get("manifest_path")
-    lock_path = arguments.get("lock_path")
-    if not isinstance(manifest_path, str) or not manifest_path.strip():
-        raise ValueError("'manifest_path' must be a non-empty string.")
-    if not isinstance(lock_path, str) or not lock_path.strip():
-        raise ValueError("'lock_path' must be a non-empty string.")
-
-    _, report = verify_lockfile(Path(manifest_path), Path(lock_path))
-    return _tool_result(json.dumps(report, indent=2, ensure_ascii=False), is_error=False)
+    data, manifest_path = _read_sandboxed_json(arguments.get("manifest_path"))
+    lock, lock_path = _read_sandboxed_json(arguments.get("lock_path"))
+    tools = parse_tools_manifest_data(data, manifest_path)
+    _, report = verify_schema_lock(tools, lock, manifest_path, lock_path)
+    return _render_report(report, "json")
 
 
 def _tool_redact_sensitive_text(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -331,7 +351,7 @@ def _tool_redact_sensitive_text(arguments: dict[str, Any]) -> dict[str, Any]:
         "redacted_count": count,
         "rule_id": "MCP-201" if count > 0 else None,
     }
-    return _tool_result(json.dumps(payload, indent=2, ensure_ascii=False), is_error=False)
+    return _render_report(payload, "json")
 
 
 _TOOL_HANDLERS = {
@@ -342,7 +362,7 @@ _TOOL_HANDLERS = {
 }
 
 
-def call_tool(name: str, arguments: Any) -> dict[str, Any]:
+def call_tool(name: str, arguments: Any, *, structured: bool = False) -> dict[str, Any]:
     """Execute an MCP tool safely and return a standard MCP tool result."""
     handler = _TOOL_HANDLERS.get(name)
     if handler is None:
@@ -355,10 +375,21 @@ def call_tool(name: str, arguments: Any) -> dict[str, Any]:
     else:
         return _tool_result("Invalid tool arguments: expected a JSON object.", is_error=True)
 
+    tool = next(tool for tool in MCP_TOOLS if tool["name"] == name)
+    unknown = parsed_args.keys() - tool["inputSchema"]["properties"].keys()
+    if unknown:
+        return _tool_result("Unexpected argument keys.", is_error=True)
     try:
-        return handler(parsed_args)
-    except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        result = handler(parsed_args)
+    except (OSError, RuntimeError) as exc:
+        return _tool_result(f"File sandbox could not read the requested JSON file ({type(exc).__name__}).", is_error=True)
+    except (UnicodeError, json.JSONDecodeError):
+        return _tool_result("Invalid UTF-8 or JSON input.", is_error=True)
+    except (ValueError, TypeError) as exc:
         return _tool_result(f"Error executing {name}: {exc}", is_error=True)
+    if not structured:
+        result.pop("structuredContent", None)
+    return result
 
 
 def _jsonrpc_error(req_id: Any, code: int, message: str) -> dict[str, Any]:
@@ -377,7 +408,9 @@ def _jsonrpc_result(req_id: Any, result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def handle_jsonrpc_message(raw_text: str) -> dict[str, Any] | None:
+def handle_jsonrpc_message(
+    raw_text: str, session: dict[str, str] | None = None
+) -> dict[str, Any] | None:
     """Process one JSON-RPC 2.0 request/notification and return response dict or None."""
     try:
         msg = json.loads(raw_text)
@@ -399,6 +432,8 @@ def handle_jsonrpc_message(raw_text: str) -> dict[str, Any] | None:
     # Notifications (no id, or notifications/*) must never produce a response
     if not has_id or method.startswith("notifications/"):
         return None
+    if msg.get("jsonrpc") != "2.0":
+        return _jsonrpc_error(req_id, -32600, "Invalid Request: expected JSON-RPC 2.0")
 
     params = msg.get("params")
     if params is None:
@@ -407,10 +442,14 @@ def handle_jsonrpc_message(raw_text: str) -> dict[str, Any] | None:
         return _jsonrpc_error(req_id, -32602, "Invalid params: expected JSON object")
 
     if method == "initialize":
+        if session is not None and "protocol" in session:
+            return _jsonrpc_error(req_id, -32600, "Server already initialized")
         requested_version = params.get("protocolVersion")
         negotiated_version = (
             requested_version if requested_version in SUPPORTED_PROTOCOL_VERSIONS else DEFAULT_PROTOCOL_VERSION
         )
+        if session is not None:
+            session["protocol"] = negotiated_version
         return _jsonrpc_result(
             req_id,
             {
@@ -423,14 +462,22 @@ def handle_jsonrpc_message(raw_text: str) -> dict[str, Any] | None:
     if method == "ping":
         return _jsonrpc_result(req_id, {})
 
+    if session is not None and "protocol" not in session:
+        return _jsonrpc_error(req_id, -32600, "Server not initialized")
+    protocol = session.get("protocol") if session is not None else DEFAULT_PROTOCOL_VERSION
+    structured = protocol in STRUCTURED_PROTOCOL_VERSIONS
     if method == "tools/list":
-        return _jsonrpc_result(req_id, {"tools": list(MCP_TOOLS)})
+        tools = [{**tool, "annotations": READ_ONLY_ANNOTATIONS} for tool in MCP_TOOLS]
+        if structured:
+            for tool in tools:
+                tool["outputSchema"] = {"type": "object"}
+        return _jsonrpc_result(req_id, {"tools": tools})
 
     if method == "tools/call":
         tool_name = params.get("name")
-        if not isinstance(tool_name, str) or not tool_name:
-            return _jsonrpc_error(req_id, -32602, "Invalid params: 'name' must be a non-empty string")
-        return _jsonrpc_result(req_id, call_tool(tool_name, params.get("arguments")))
+        if not isinstance(tool_name, str) or tool_name not in _TOOL_HANDLERS:
+            return _jsonrpc_error(req_id, -32602, "Invalid params: unknown tool")
+        return _jsonrpc_result(req_id, call_tool(tool_name, params.get("arguments"), structured=structured))
 
     return _jsonrpc_error(req_id, -32601, f"Method not found: {method}")
 
@@ -444,6 +491,7 @@ def serve_stdio(
     in_stream = _as_binary_reader(sys.stdin if stdin is None else stdin)
     out_stream = _as_binary_writer(sys.stdout if stdout is None else stdout)
     err_stream = sys.stderr if stderr is None else stderr
+    session: dict[str, str] = {}
 
     err_stream.write(f"[mcp-shieldwall] MCP stdio server v{__version__} listening...\n")
     err_stream.flush()
@@ -460,7 +508,7 @@ def serve_stdio(
             break
 
         framing, raw_text = framed
-        response = handle_jsonrpc_message(raw_text)
+        response = handle_jsonrpc_message(raw_text, session)
         if response is not None:
             write_framed_message(out_stream, framing, response)
 

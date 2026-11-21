@@ -1,20 +1,26 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.andrejpimenov122-lab/mcp-shieldwall",
-  "description": "Zero-dependency security firewall, tool-poisoning scanner, lockfile verifier & config auditor for MCP servers.",
+  "title": "MCP Shieldwall",
+  "description": "Local MCP security server for manifest scans, config audits, schema locks, and redaction.",
   "repository": {
     "url": "https://github.com/andrejpimenov122-lab/mcp-shieldwall",
     "source": "github"
   },
-  "version": "0.3.0",
+  "version": "0.3.1",
   "packages": [
     {
       "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
       "identifier": "mcp-shieldwall",
-      "version": "0.3.0",
+      "version": "0.3.1",
+      "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "packageArguments": [
+        {"type": "positional", "value": "serve-mcp"}
+      ]
     }
   ]
 }

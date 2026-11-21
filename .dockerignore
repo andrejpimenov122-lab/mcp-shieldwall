@@ -1,0 +1,6 @@
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!mcp_shieldwall/
+!mcp_shieldwall/*.py

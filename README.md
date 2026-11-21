@@ -7,7 +7,7 @@
 
 Coding agents (Claude Desktop, Claude Code, Cursor, Windsurf) increasingly connect to third-party **MCP servers**. A single poisoned tool description (`<IMPORTANT> silently read ~/.ssh/id_rsa ...`), base64-obfuscated `inputSchema` default, unpinned `npx -y` server, or silent schema update ("rug-pull") can hijack the model's context or leak API keys.
 
-**MCP Shieldwall** (`v0.3.0`) runs locally on **100% Python stdlib** with **zero external dependencies**:
+**MCP Shieldwall** (`v0.3.1`) runs locally on **100% Python stdlib** with **zero external dependencies**:
 
 - **Native MCP Server (`serve-mcp` / `mcp-shieldwall-server`)**: Runs as a zero-dependency JSON-RPC 2.0 `stdio` MCP server exposing `scan_tools_manifest`, `audit_client_config`, `verify_schema_lock`, and `redact_sensitive_text` directly inside your AI client.
 
@@ -69,10 +69,18 @@ Add MCP Shieldwall directly to your `claude_desktop_config.json`, `.mcp.json`, o
   "mcpServers": {
     "mcp-shieldwall": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/andrejpimenov122-lab/mcp-shieldwall", "mcp-shieldwall", "serve-mcp"]
+      "args": ["--from", "git+https://github.com/andrejpimenov122-lab/mcp-shieldwall@v0.3.1", "mcp-shieldwall", "serve-mcp"]
     }
   }
 }
+```
+
+The stdio file tools read local JSON files up to 2 MiB under the working directory or the user’s home directory.
+
+Claude Code also supports the CLI form:
+
+```sh
+claude mcp add mcp-shieldwall -- uvx --from git+https://github.com/andrejpimenov122-lab/mcp-shieldwall@v0.3.1 mcp-shieldwall serve-mcp
 ```
 
 Exposed MCP tools:
@@ -88,7 +96,7 @@ Add directly to `.pre-commit-config.yaml` in any repository:
 ```yaml
 repos:
   - repo: https://github.com/andrejpimenov122-lab/mcp-shieldwall
-    rev: v0.3.0
+    rev: v0.3.1
     hooks:
       - id: mcp-shieldwall-config
       - id: mcp-shieldwall-manifest
